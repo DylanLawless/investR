@@ -28,3 +28,6 @@ The following two are offered:
 ## Purpose
 The goal of this repository is to provide tools and insights that enable investors to navigate the financial markets more effectively. By consolidating various investment resources and analysis tools, we aim to create a comprehensive platform for investment strategy development.
 
+## Examples
+
+![plot_performance_of_funds_across_metrics.png](output/plot_performance_of_funds_across_metrics.png)
