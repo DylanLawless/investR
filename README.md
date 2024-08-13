@@ -1,23 +1,23 @@
 # Investment Strategy and Analysis Scripts
 
-This repository contains investment strategies and scripts for financial analysis, designed to assist users in making informed investment decisions based on data and trends from various sources.
+Investment strategy scripts for financial analysis, designed to for making informed investment decisions based on data and analysis from various sources.
 
 ## Pages and Resources
 
 Here are the primary pages and resources used in this project:
 
-### Investment Instruments
+### Investment instruments
 - [ZKB Investment Instruments](https://www.zkb.ch/de/private/anlagen/anlageinstrumente.html)
 
-### All Products
+### Fund products
 - [ZKB All Products](https://zkb-finance.mdgms.com/products/stp/index.html?LANG=en#)
 
-### Swisscanto Investment Funds
+### Swisscanto investment funds
 - [Swisscanto Funds](https://www.swisscanto.com/ch/de/swisscanto-fonds.html)
 - [Swisscanto Index Funds](https://www.swisscanto.com/ch/de/swisscanto-fonds/indexfonds.html)
   - Discusses the advantages of Index funds over ETFs, such as the absence of Swiss stamp duty on purchases and sales.
 
-## Product Selection for Investing
+## Product selection for investing
 
 ### Account Types
 First, you will need a custody account for holding securities.
@@ -34,5 +34,5 @@ The goal of this repository is to provide tools and insights that enable investo
 ![plot_performance_of_funds_across_metrics.png](output/plot_performance_of_funds_across_metrics.png)
 
 ### AAPL stock analysis
-![plot_quantmod_p_recall.png](output/plot_quantmod_p_recall.png)
-![plot_quantmod_p_combined.png](output/plot_quantmod_p_combined.png)
+![plot_quantmod_p_recall.png](output/plot_quantmod_p_recall.png){width=45%}
+![plot_quantmod_p_combined.png](output/plot_quantmod_p_combined.png){width=45%}
