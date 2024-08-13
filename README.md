@@ -29,5 +29,10 @@ The following two are offered:
 The goal of this repository is to provide tools and insights that enable investors to navigate the financial markets more effectively. By consolidating various investment resources and analysis tools, we aim to create a comprehensive platform for investment strategy development.
 
 ## Examples
-
+### SwissCanto funds analysis
+![plot_swisscanto_p_stab_prof_sharpe_3yr.png](output/plot_swisscanto_p_stab_prof_sharpe_3yr.png)
 ![plot_performance_of_funds_across_metrics.png](output/plot_performance_of_funds_across_metrics.png)
+
+### AAPL stock analysis
+![plot_quantmod_p_recall.png](plot_quantmod_p_recall.png)
+![plot_quantmod_p_combined.png](plot_quantmod_p_combined.png)
