@@ -8,6 +8,7 @@ library(quantmod)
 library(ggplot2)
 library(dplyr)
 library(tidyr)
+library(patchwork)
 
 # Set the stock symbol for a company (e.g., AAPL for Apple Inc.)
 symbol <- "AAPL"
@@ -327,6 +328,7 @@ p1 <- ggplot(test_data, aes(x = Date, y = AAPL.Close)) +
 	geom_point(data = test_results, aes(x = as.Date(Sell_Date), y = Closing_Price), color = "red") +
 	labs(title = "Test Data: Selling Points Identified by the Strategy", y = "Closing Price") +
 	theme_minimal()
+p1
 
 # Enhancing the Function for Predictive Selling ----
 
@@ -381,7 +383,7 @@ simulate_predictive_trading <- function(data, lookback = 20, threshold_drop = 0.
 	return(results)
 }
 
-is.na()
+
 # Run the enhanced simulation on training data
 train_results <- simulate_predictive_trading(train_data)
 best_scenario <- train_results[which.min(train_results$Predicted_Drop), ]
@@ -401,7 +403,10 @@ p2 <- ggplot(test_data, aes(x = Date, y = AAPL.Close)) +
 	theme_minimal() 
 
 p_combined <- p1 / p2
+p_combined
 
+
+						
 ggsave("../output/plot_quantmod_p_combined.pdf", p_combined, width = 10, height = 12)
 ggsave("../output/plot_quantmod_p_combined.png", p_combined, width = 10, height = 12)
 
@@ -492,6 +497,161 @@ p <- ggplot(train_data, aes(x = Date, y = AAPL.Close)) +
 
 # Display the plot
 print(p)
+
+# enhanced logging 2 ----
+
+prepare_data <- function(data, lookback = 20) {
+	# Calculate RSI
+	data$RSI <- RSI(data$AAPL.Close, n = lookback)
+	
+	# Calculate MACD
+	macd_results <- MACD(data$AAPL.Close, nFast = 12, nSlow = 26, nSig = 9)
+	data$MACD <- macd_results[, "macd"]
+	data$Signal <- macd_results[, "signal"]
+	
+	# Calculate Bollinger Bands
+	bbands_results <- BBands(data$AAPL.Close, n = lookback)
+	data$BB_Upper = bbands_results[, "up"]
+	data$BB_Middle = bbands_results[, "mavg"]
+	data$BB_Lower = bbands_results[, "dn"]
+	
+	# Remove NA values produced by indicators
+	data <- na.omit(data)
+	
+	return(data)
+}
+
+# Define the Trading Logic
+find_sell_points <- function(data, rsi_threshold = 70, lookback = 20) {
+	results <- list()
+	
+	# Start the loop from the `lookback` index to avoid negative indices
+	for (i in (lookback + 1):nrow(data)) {
+		# Calculate local maximum over the lookback period
+		local_max <- max(data$AAPL.Close[(i - lookback):i])
+		current_close <- data$AAPL.Close[i]
+		rsi_peak <- data$RSI[i]
+		macd_val <- data$MACD[i]
+		signal_line <- data$Signal[i]
+		
+		macd_data <- MACD(data$AAPL.Close, nFast = 12, nSlow = 26, nSig = 9)
+		data$MACD <- macd_data[, "macd"]
+		data$Signal <- macd_data[, "signal"]
+		
+		upper_band <- data$BB_Upper[i]
+		
+		# Condition to identify a sell point
+		if (current_close > upper_band && rsi_peak > rsi_threshold && macd_val < signal_line) {
+			results[[length(results) + 1]] <- list(
+				Start_Date = data$Date[i - lookback],
+				Predicted_Sell_Date = data$Date[i],
+				Max_Price = local_max,
+				Predicted_Closing_Price = current_close
+			)
+		}
+		print(results)
+	}
+
+	# Convert list of results to a data frame for easier manipulation and plotting
+	return(bind_rows(results))
+}
+
+
+# analyse 
+# Load data
+
+head(aapl_df)
+
+# Prepare data
+prepared_data <- prepare_data(aapl_df)
+head(prepared_data)
+
+# Find sell points
+sell_points <- find_sell_points(prepared_data)
+
+# Plotting results
+
+# Create a base plot with AAPL closing prices
+base_plot <- ggplot(prepared_data, aes(x = Date, y = AAPL.Close)) +
+	geom_line(color = "gray", size = 0.75) +
+	labs(title = "AAPL Stock Price Analysis with Trading Signals",
+		  x = "Date",
+		  y = "Closing Price ($)")
+
+base_plot
+
+# Add Bollinger Bands
+bollinger_bands <- geom_ribbon(aes(ymin = BB_Lower, ymax = BB_Upper), fill = "blue", alpha = 0.2)
+base_plot <- base_plot + bollinger_bands
+base_plot
+
+# Highlight sell points
+sell_points_plot <- geom_point(data = sell_points, aes(x = Predicted_Sell_Date, y = Predicted_Closing_Price),
+										 color = "red", size = 3, shape = 18)
+base_plot <- base_plot + sell_points_plot
+base_plot
+
+# Add MACD and RSI as additional plots
+macd_plot <- ggplot(prepared_data, aes(x = Date)) +
+	geom_line(aes(y = MACD), color = "darkgreen") +
+	geom_line(aes(y = Signal), color = "red", linetype = "dashed") +
+	labs(title = "MACD Indicator", y = "MACD Value")
+macd_plot
+
+rsi_plot <- ggplot(prepared_data, aes(x = Date, y = RSI)) +
+	geom_line(color = "purple") +
+	geom_hline(yintercept = 70, linetype = "dashed", color = "red") +
+	geom_hline(yintercept = 30, linetype = "dashed", color = "blue") +
+	labs(title = "RSI Indicator", y = "RSI Value")
+rsi_plot
+
+# Combine plots using patchwork library
+library(patchwork)
+combined_plot <- (base_plot / macd_plot / rsi_plot) + 
+	plot_layout(guides = 'collect') + 
+	theme(legend.position = "bottom")
+combined_plot  
+
+# Print the combined plot
+print(combined_plot)
+
+# Enhanced logging 3 idea ----
+
+# we want to design a new idea. like linear regression, we minimise the distance to the line. imagine that we have the point at which a price has dropped "red" and the price at which is reaches it's peak "blue" before "red". the challenge is that we don't know when the real blue to red transition occurs. therefore, we can going to make a system which can predict this. on the x axis we have day dates. on the y axis stock price. if we take the first 30 days, we might imagine a stock increasing in value linearly for 30 days, then suddenly it drops. this would be a perfect rising_run time period. the next week, it rises more slowly, the slope being approximately half of the first rising_run period. we might predict that when it reaches the same price as the first run it will fall agian, however it is more likely that when we correct for the slope (i.e. normalise by grouping the run period), the newly adjected period of time before the drop "red" will be similar. therefore, if we test many expanding windows of time while scaling to make the slopes equivalient, we can converge on the optimal slope / time algorithm that will predict the future optimal sale date during a rising_run before it reaches "red". this might be similar to how one would design a linear regression type algorithm. we would like to store every result in a longdata frame. we would then like plot every single rising_run calculated overlapping on the same plot of price and date. we wold then like to plot all the red and blue points indicating the run ends and price drops. 
+# ChatGPT said:
+# 	ChatGPT
+# Your proposed project to develop a predictive model for identifying the optimal sell points in stock trading based on rising runs before a significant drop is quite sophisticated. It involves understanding complex financial indicators, technical analysis, and developing an algorithm that can adjust its parameters dynamically based on historical data trends. Let’s break down the approach into actionable steps and start building this system:
+# 	
+# 	Step-by-Step Approach
+# Define the Financial Indicators:
+# 	
+# 	RSI (Relative Strength Index) helps identify overbought or oversold conditions.
+# MACD (Moving Average Convergence Divergence) highlights changes in the strength, direction, momentum, and duration of a stock's price trend.
+# Bollinger Bands provide a relative definition of high and low prices.
+# Linear Regression Concept Adaptation:
+# 
+# Instead of a simple linear regression, consider using a polynomial regression or a moving window regression to better fit the variable timeframes and price changes.
+# Develop an algorithm to adjust the window based on the detected slope of the price increase.
+# Algorithm Design:
+# 
+# Implement a moving window analysis where each window attempts to predict the point just before a potential drop (red point).
+# Normalize the data within each window to account for different slopes and intensities of price movements.
+# Predict the end of a rising run (blue point) using a combination of RSI, MACD, and Bollinger Bands, adjusted dynamically based on past performance accuracy.
+# Data Structure:
+# 
+# Use a long data frame to store results from each window analysis, including start date, predicted sell date, maximum price during the window, and other relevant metrics.
+# Visualization:
+# 
+# Plot all rising runs, with lines indicating the start and end of each predicted optimal sell period.
+# Highlight actual peak points (blue) and significant drop points (red) to evaluate the accuracy of predictions.
+
+# Enhanced logging 3 work ----
+
+
+
+
+
+
 
 # # forecast 1 ----
 # 
