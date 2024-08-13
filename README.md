@@ -34,5 +34,5 @@ The goal of this repository is to provide tools and insights that enable investo
 ![plot_performance_of_funds_across_metrics.png](output/plot_performance_of_funds_across_metrics.png)
 
 ### AAPL stock analysis
-![plot_quantmod_p_recall.png](output/plot_quantmod_p_recall.png){width=45%}
-![plot_quantmod_p_combined.png](output/plot_quantmod_p_combined.png){width=45%}
+<img src="output/plot_quantmod_p_combined.png" width=45% height=45%>
+<img src="output/plot_quantmod_p_recall.png" width=45% height=45%>
