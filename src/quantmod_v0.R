@@ -186,7 +186,7 @@ set.seed(123)
 # test_data <- aapl_df[-train_indices, ]
 
 # Calculate the index for splitting the dataset into training (first 80%) and testing sets
-split_index <- floor(0.2 * nrow(aapl_df))
+split_index <- floor(0.5 * nrow(aapl_df))
 train_data <- aapl_df[1:split_index, ]
 test_data <- aapl_df[(split_index + 1):nrow(aapl_df), ]
 
@@ -250,8 +250,6 @@ p_recall <- ggplot(full_data, aes(x = Date, y = AAPL.Close)) +
 	scale_color_manual(values = c("Match" = "green", "Mismatch" = "red")) +
 	theme_minimal() +
 	theme(legend.position = "bottom")
-
-p_recall
 
 ggsave("../output/plot_quantmod_p_recall.pdf", p_recall, width = 8, height = 6)
 ggsave("../output/plot_quantmod_p_recall.png", p_recall, width = 8, height = 6)
@@ -332,9 +330,6 @@ p1 <- ggplot(test_data, aes(x = Date, y = AAPL.Close)) +
 	theme_minimal()
 p1
 
-# red test data ----
-red_test_results <- test_results
-
 # Enhancing the Function for Predictive Selling ----
 
 library(TTR)  # For technical trading indicators
@@ -410,8 +405,7 @@ p2 <- ggplot(test_data, aes(x = Date, y = AAPL.Close)) +
 p_combined <- p1 / p2
 p_combined
 
-# blue test data ----
-blue_test_results <- test_results
+
 						
 ggsave("../output/plot_quantmod_p_combined.pdf", p_combined, width = 10, height = 12)
 ggsave("../output/plot_quantmod_p_combined.png", p_combined, width = 10, height = 12)
@@ -484,7 +478,7 @@ print(head(train_results))
 
 
 # Visualization and further analysis can follow based on the printed debug information
-# MAKE THIS BETTER
+MAKE THIS BETTER
 
 
 # Merging the train_results with the original data for visualization
@@ -724,277 +718,4 @@ print(combined_plot)
 # 	ylab("Price") +
 # 	theme_minimal() +
 # 	scale_color_manual(values = c("Forecast" = "red", "AAPL Close" = "blue"))
-
-
-
-# New approach -----
-# Identify 'Blue' and 'Red' Points: Determine points in time where a peak ('Blue') is followed by a significant drop ('Red').
-# Calculate Fit for Each Segment: Use linear regression to fit lines to the closing prices between each 'Blue' and subsequent 'Red' point.
-# Normalize and Compare Slopes: Normalize the slopes by adjusting for the duration of the trend to make them comparable.
-# Predict Future Sell Points: Use historical data to establish a model for predicting future sell points based on current trends.
-## get segments ----
-
-library(quantmod)
-library(ggplot2)
-library(dplyr)
-library(broom)  # for easy model summaries
-
-# Load data
-# getSymbols("AAPL", src = "yahoo", from = "2018-01-01", to = "2018-12-31")
-# aapl_df <- data.frame(Date = index(AAPL), AAPL.Close = Cl(AAPL))
-
-# Sliding window analysis parameters
-window_size <- 30  # days
-step_size <- 1     # step forward by 1 day
-
-# Initialize a list to store results
-models <- list()
-
-# Perform sliding window regression
-for (start_index in 1:(nrow(aapl_df) - window_size + 1)) {
-	end_index <- start_index + window_size - 1
-	data_subset <- aapl_df[start_index:end_index, ]
-	
-	# Fit linear model
-	fit <- lm(AAPL.Close ~ Date, data = data_subset)
-	# Summarize the model
-	summary_fit <- glance(fit)
-	
-	# Store results
-	models[[start_index]] <- list(
-		model = fit,
-		start_date = data_subset$Date[1],
-		end_date = max(data_subset$Date),
-		r_squared = summary_fit$r.squared
-	)
-}
-
-# Convert list to dataframe for easy manipulation and plotting
-model_df <- do.call(rbind, lapply(models, function(x) {
-	data.frame(
-		StartDate = x$start_date,
-		EndDate = x$end_date,
-		RSquared = x$r_squared,
-		CoefIntercept = coef(x$model)[1],
-		CoefSlope = coef(x$model)[2]
-	)
-}))
-
-# Rank models based on R-squared
-model_df <- model_df %>% 
-	mutate(Rank = rank(-RSquared))  # rank in descending order of R-squared
-
-head(model_df)
-
-aapl_df$Date <- as.Date(aapl_df$Date)
-
-# Adjust model_df to include start and end y-values for segments
-model_df <- model_df %>%
-	mutate(
-		Start_Y = CoefIntercept + CoefSlope * as.numeric(StartDate),
-		End_Y = CoefIntercept + CoefSlope * as.numeric(EndDate)
-	)
-
-# Now plot using the modified model_df with pre-calculated y-values
-ggplot(aapl_df, aes(x = Date, y = AAPL.Close)) +
-	geom_line() +
-	geom_segment(data = model_df, aes(x = StartDate, xend = EndDate, y = Start_Y, yend = End_Y, colour = Rank), alpha = 0.5) +
-	scale_colour_gradient(low = "blue", high = "red") +
-	labs(title = "AAPL Closing Prices with Sliding Window Linear Fits",
-			 subtitle = "Window size: 30 days, coloured by fit quality (R-squared rank)") +
-	theme_minimal()
-
-## find best segments ----
-
-# Assume model_df is already created and contains StartDate, EndDate, and Rank
-model_df <- model_df %>%
-	arrange(Rank) # Ascending order so best ranks come first
-
-# Initialize variables to track coverage
-covered_until <- min(aapl_df$Date) - 1 # Start before the first date
-selected_segments <- data.frame()
-
-# Iterate through sorted segments to cover the whole range
-while(covered_until < max(aapl_df$Date)) {
-	# Find segments that start before or when the last coverage ends
-	available_segments <- model_df[model_df$StartDate <= (covered_until + 1),]
-	
-	# Check if there are any segments available to pick
-	if (nrow(available_segments) == 0) break
-	
-	# Select the segment that ends the latest among the available choices
-	best_segment <- available_segments[which.max(available_segments$EndDate),]
-	
-	# Add the best segment to the selected segments
-	selected_segments <- rbind(selected_segments, best_segment)
-	
-	# Update the coverage end date
-	covered_until <- best_segment$EndDate
-}
-
-# Check the selected segments
-print(selected_segments)
-
-# Plotting selected segments over the AAPL closing prices
-ggplot(aapl_df, aes(x = Date, y = AAPL.Close)) +
-	geom_line() +
-	geom_segment(data = selected_segments, aes(x = StartDate, xend = EndDate, y = Start_Y, yend = End_Y, colour = Rank), alpha = 0.75) +
-	scale_colour_gradient(low = "red", high = "yellow") +
-	labs(title = "Optimal Coverage with Top Ranked Line Segments", y = "Closing Price") +
-	theme_minimal()
-
-## apply segments ----
-
-red_test_results |> select(Sell_Date, Closing_Price)
-blue_test_results |> select(Predicted_Sell_Date, Predicted_Closing_Price)
-
-
-red_test_results$prediction <- "red"
-red_test_results$Date <- red_test_results$Sell_Date
-blue_test_results$prediction <- "blue"
-blue_test_results$Date <- blue_test_results$Predicted_Sell_Date
-blue_test_results$Closing_Price <- blue_test_results$Predicted_Closing_Price
-
-
-tmp1 <- red_test_results |> select(Date, Closing_Price, prediction)
-tmp2 <- blue_test_results |> select(Date, Closing_Price, prediction)
-
-tmp3 <- rbind(tmp1, tmp2)
-
-
-
-ggplot(aapl_df, aes(x = Date, y = AAPL.Close)) +
-	geom_line() +  
-	geom_segment(data = selected_segments, 
-							 aes(x = StartDate, xend = EndDate, y = Start_Y, yend = End_Y#, color = Rank
-							 		), alpha = 0.75) +
-	geom_point(data = tmp3, aes(y = Closing_Price, color = prediction)) +
-	scale_color_manual(values = c("red" = "red", "blue" = "blue")) +
-	labs(title = "Optimal Coverage with Top Ranked Line Segments", y = "Closing Price") +
-	theme_minimal()
-
-
-
-### rising run windows ----
-
-library(dplyr)
-library(ggplot2)
-library(purrr)
-
-# Step 1: Identify Rising Run Windows
-# Assuming 'tmp3' contains the merged red and blue points
-tmp3 <- tmp3 %>%
-	arrange(Date) %>%
-	mutate(Change = lead(prediction, default = last(prediction)) != prediction,
-				 RunIndex = cumsum(Change & prediction == "red")) %>%
-	filter(prediction == "blue" | (prediction == "red" & Change))
-
-head(tmp3)
-
-# Assuming 'selected_segments' contains StartDate, EndDate, Start_Y, End_Y, and Rank
-selected_segments <- selected_segments %>%
-	mutate(WindowIndex = sapply(StartDate, function(date) min(tmp3$RunIndex[tmp3$Date >= date])))
-
-head(selected_segments)
-
-# Calculate summary statistics for each window
-slope_stats <- selected_segments %>%
-	group_by(WindowIndex) %>%
-	summarize(Avg_Slope = mean((End_Y - Start_Y) / as.numeric(EndDate - StartDate)), 
-						Slope_SD = sd((End_Y - Start_Y) / as.numeric(EndDate - StartDate)),
-						Count = n())
-
-# Step 3: Visualize by Rising Run Window Index
-ggplot(selected_segments, aes(x = as.numeric(StartDate), xend = as.numeric(EndDate), y = Start_Y, yend = End_Y)) +
-	geom_segment(aes(color = factor(WindowIndex)), alpha = 0.75) +
-	# scale_color_brewer(palette = "Set1", name = "Window Index") +
-	# geom_point(data = tmp3, aes(x = as.numeric(Date), y = Closing_Price, color = prediction), size = 3) +
-	labs(title = "Analysis of Rising Run Windows", x = "Date (numeric)", y = "Stock Price") +
-	theme_minimal() +
-	theme(legend.position = "bottom")
-
-# Print summary statistics
-print(slope_stats)
-
-
-
-#
-#
-#
-
-library(dplyr)
-library(ggplot2)
-
-# Ensure date formats are consistent
-aapl_df$Date <- as.Date(aapl_df$Date)
-selected_segments$StartDate <- as.Date(selected_segments$StartDate)
-selected_segments$EndDate <- as.Date(selected_segments$EndDate)
-tmp3$Date <- as.Date(tmp3$Date)
-
-# Adjust merging strategy to use list-columns for handling multiple matches
-merged_data <- selected_segments %>%
-	rowwise() %>%
-	mutate(
-		Point_Close = list(tmp3$Closing_Price[tmp3$Date >= StartDate & tmp3$Date <= EndDate]),
-		Point_Prediction = list(tmp3$prediction[tmp3$Date >= StartDate & tmp3$Date <= EndDate]),
-		Point_Date = list(tmp3$Date[tmp3$Date >= StartDate & tmp3$Date <= EndDate])
-	) %>%
-	ungroup()
-
-# To work with list-columns in ggplot, we need to unnest them appropriately before plotting
-merged_data <- tidyr::unnest(merged_data, cols = c(Point_Close, Point_Prediction, Point_Date))
-
-p_seg_1 <- ggplot() +
-	geom_line(data = aapl_df, aes(x = Date, y = AAPL.Close), color = "grey") +
-	geom_segment(data = merged_data, aes(x = StartDate, xend = EndDate, y = Start_Y, yend = End_Y, color = as.factor(WindowIndex)), alpha = 0.5) +
-	geom_point(data = merged_data, aes(x = Point_Date, y = Point_Close, color = Point_Prediction)) +
-	# scale_color_manual(values = c("red" = "red", "blue" = "blue", "1" = "yellow", "2" = "green", "3" = "purple")) +
-	labs(title = "AAPL closing prices with predictive points and segments",
-			 x = "Date", y = "Closing Price") +
-	theme_minimal()
-
-p_seg_1
-
-### normalise ----
-
-selected_segments <- selected_segments %>%
-	mutate(
-		Relative_Days = map2(StartDate, EndDate, ~seq.Date(.x, .y, by = "day") - .x)
-	) %>%
-	unnest(cols = c(Relative_Days)) %>%
-	group_by(WindowIndex) %>%
-	mutate(
-		Day_Index = row_number() - 1  # Day 0 to Day 6
-	) %>%
-	ungroup()
-
-plotting_data <- selected_segments %>%
-	select(WindowIndex, Day_Index, Start_Y, End_Y) %>%
-	arrange(WindowIndex, Day_Index)
-
-# Calculate the Y values for each Day_Index based on the slope and intercept
-plotting_data <- plotting_data %>%
-	group_by(WindowIndex) %>%
-	mutate(
-		Y_Value = Start_Y + (End_Y - Start_Y) * (Day_Index / max(Day_Index))
-	) %>%
-	ungroup()
-
-p_seg_2 <- ggplot(plotting_data, aes(x = Day_Index, y = Y_Value, group = WindowIndex, color = as.factor(WindowIndex))) +
-	geom_line(alpha = 0.75) +
-	scale_color_viridis_d(option = "magma", begin = 0.3, end = 0.9, direction = 1) +
-	labs(
-		title = "Normalized view of price\nmovements over 7-Day segments",
-		x = "Day Index (0-6)",
-		y = "Stock Price",
-		color = "Segment Index"
-	) +
-	theme_minimal() 
-
-p_seg_2
-
-p_seg_comb <- p_seg_1 | p_seg_2
-p_seg_comb
-ggsave("../output/plot_quantmod_p_seg_comb.pdf", p_seg_comb, width = 12, height = 6)
-ggsave("../output/plot_quantmod_p_seg_comb.png", p_seg_comb, width = 12, height = 6)
 
